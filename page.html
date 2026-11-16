@@ -149,8 +149,8 @@ body.bare .ticket,body.bare .sight,body.bare .console{display:none}
       <input type="range" id="rngRow" min="0" max="21" step="1" value="0"></label>
     <label class="field"><span class="lab">Seat <output id="oSeat">21</output></span>
       <input type="range" id="rngSeat" min="1" max="41" step="1" value="21"></label>
-    <div class="field"><label class="lab" for="rngFov">Lens <output id="oFov">108°</output></label>
-      <input type="range" id="rngFov" min="50" max="130" step="1" value="108">
+    <div class="field"><label class="lab" for="rngFov">Lens <output id="oFov">80°</output></label>
+      <input type="range" id="rngFov" min="50" max="130" step="1" value="80">
       <div class="chips"><button data-fov="72">1× phone</button><button data-fov="108">0.5× phone</button><button data-fov="125">Ultra</button></div></div>
     <label class="field"><span class="lab">Picture</span>
       <select id="selFit"><option value="fit">Fit (black bars)</option><option value="fill">Fill screen (crop)</option><option value="stretch">Stretch</option></select></label>
@@ -189,7 +189,7 @@ const THEATERS = {
 };
 
 let T = THEATERS.giant, row = 0, seat = 21;
-let yaw = 0, pitch = 0, fovLong = 108, fit = 'fit', guides = false;
+let yaw = 0, pitch = 0, fovLong = 80, fit = 'fit', guides = false;
 let source = 'test', filmPlaying = true, filmTime = 0;   // source: 'test' | 'video' | 'embed'
 
 // ---------- renderer ----------
