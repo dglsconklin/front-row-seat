@@ -1,0 +1,1017 @@
+<title>Front Row Seat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: the theater is the page. A ticket stub pinned top-left, a sightline card top-right,
+   a projection-booth console docked along the bottom. One dark look on purpose: the house lights are down. */
+:root{
+  --house:#07080c;
+  --panel:rgba(13,15,21,.86);
+  --edge:rgba(236,230,218,.13);
+  --ink:#ece6da;
+  --ink-dim:#a39e94;
+  --aisle:#f2a93b;
+  --beam:#b3c7ff;
+  --hot:#ff8466;
+  --stub:#efe7d6;
+  --stub-ink:#1b1812;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+  --gt:calc(env(safe-area-inset-top,0px) + 16px);
+  --gb:calc(env(safe-area-inset-bottom,0px) + 16px);
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--house);color:var(--ink);font-family:var(--f-body);overflow:hidden;-webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
+#stage.dragging{cursor:grabbing}
+body.player #stage{pointer-events:none}
+
+/* outside players (YouTube, Twitch, Vimeo) sit under the transparent hole in the canvas */
+#cssRoot{position:fixed;inset:0;overflow:hidden;pointer-events:none}
+#cssCam{position:absolute;left:0;top:0;transform-style:preserve-3d;pointer-events:none}
+#ytScreen{position:absolute;left:0;top:0;background:#111216;overflow:hidden;pointer-events:auto}
+#ytScreen iframe{position:absolute;border:0;display:block}
+
+.ticket{position:fixed;top:var(--gt);left:var(--gl);display:flex;max-width:calc(58vw - 24px);background:var(--stub);color:var(--stub-ink);border-radius:5px;box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.stub-side{writing-mode:vertical-rl;transform:rotate(180deg);font:500 10px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;padding:10px 7px;border-left:1.5px dashed rgba(27,24,18,.35);color:rgba(27,24,18,.7)}
+.stub-main{padding:10px 14px 11px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.seatline{display:flex;align-items:baseline;gap:6px 8px;flex-wrap:wrap}
+.seatline .k{font:500 10px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:rgba(27,24,18,.62)}
+.seatline .v{font:800 40px/.85 var(--f-display);letter-spacing:.01em;margin-right:6px}
+.stub-house{font:500 11px/1.35 var(--f-mono);color:rgba(27,24,18,.75)}
+
+.sight{position:fixed;top:var(--gt);right:var(--gr);width:228px;max-width:calc(42vw - 16px);background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:10px 12px 11px;display:flex;flex-direction:column;gap:8px;backdrop-filter:blur(8px)}
+.verdict{align-self:flex-start;font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;padding:5px 8px;border-radius:99px;color:var(--house);background:var(--beam)}
+.verdict[data-level="2"]{background:var(--aisle)}
+.verdict[data-level="3"]{background:var(--hot)}
+.sight dl{margin:0;display:grid;gap:5px}
+.sight dl div{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.sight dt{font:400 12px/1.2 var(--f-body);color:var(--ink-dim)}
+.sight dd{margin:0;font:500 14px/1 var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.console{position:fixed;left:var(--gl);right:var(--gr);bottom:var(--gb);max-width:1080px;margin-inline:auto;background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(10px)}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bar .spacer{flex:1 1 0}
+button{font:500 13px/1 var(--f-body);color:var(--ink);background:rgba(236,230,218,.07);border:1px solid var(--edge);border-radius:6px;padding:9px 12px;cursor:pointer;white-space:nowrap}
+button:hover{background:rgba(236,230,218,.15)}
+button.primary{background:var(--aisle);color:#1d1406;border-color:transparent;font-weight:600;min-width:74px}
+button.primary:hover{background:#ffbb55}
+button[aria-disabled="true"]{color:var(--ink-dim)}
+button[aria-expanded="true"],button[aria-pressed="true"]{background:rgba(236,230,218,.16)}
+:focus-visible{outline:2px solid var(--aisle);outline-offset:2px}
+.linkrow{display:flex;gap:6px}
+.linkrow input{flex:1 1 auto;min-width:0;font:400 14px var(--f-body);color:var(--ink);background:#151821;border:1px solid var(--edge);border-radius:6px;padding:8px 10px}
+.linkrow input::placeholder{color:var(--ink-dim)}
+.tray{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 20px;border-top:1px solid var(--edge);padding-top:11px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lab{display:flex;justify-content:space-between;gap:8px;font:500 11px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-dim)}
+.lab output{color:var(--ink);text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+select{font:400 13px var(--f-body);color:var(--ink);background:#151821;border:1px solid var(--edge);border-radius:6px;padding:7px 8px;width:100%;min-width:0}
+input[type=range]{width:100%;margin:2px 0;accent-color:var(--aisle)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:5px 8px;font:500 11px/1 var(--f-mono)}
+.check{display:flex;align-items:center;gap:8px;font:400 13px var(--f-body);cursor:pointer}
+.check input{accent-color:var(--aisle);width:16px;height:16px;margin:0}
+.hint{grid-column:1/-1;font:400 12px/1.5 var(--f-mono);color:var(--ink-dim);margin:0}
+.console.collapsed .tray{display:none}
+
+#btnShow{position:fixed;right:var(--gr);bottom:var(--gb);background:var(--panel)}
+.sound{position:fixed;left:50%;top:var(--gt);transform:translateX(-50%);background:var(--aisle);color:#1d1406;font:600 13px/1 var(--f-body);padding:11px 16px;border-radius:99px;border:0;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.sound:hover{background:#ffbb55}
+@media (max-width:860px){.sound{top:calc(var(--gt) + 104px)}}
+body.bare .ticket,body.bare .sight,body.bare .console{display:none}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:140px;max-width:min(560px,calc(100vw - 32px));background:var(--stub);color:var(--stub-ink);font:500 13px/1.45 var(--f-body);padding:10px 14px;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center}
+.drop{position:fixed;inset:12px;border:2px dashed var(--aisle);border-radius:14px;background:rgba(7,8,12,.55);display:grid;place-items:center;pointer-events:none}
+.drop p{font:800 clamp(28px,6vw,64px)/1 var(--f-display);letter-spacing:.02em;color:var(--aisle);margin:0;text-align:center;padding:0 16px}
+
+@media (max-width:560px){
+  .seatline .v{font-size:30px}
+  .stub-house{display:none}
+  .sight{padding:8px 10px}
+  .sight .opt{display:none}
+  .sight dt{font-size:11px}
+  .sight dd{font-size:13px}
+  button{padding:9px 10px}
+}
+</style>
+
+<div id="cssRoot"><div id="cssCam"><div id="ytScreen" hidden></div></div></div>
+<canvas id="stage" tabindex="0" aria-label="Theater view. Drag to look around."></canvas>
+
+<header class="ticket">
+  <div class="stub-side">Admit one</div>
+  <div class="stub-main">
+    <div class="seatline"><span class="k">Row</span><span class="v" id="tRow">A</span><span class="k">Seat</span><span class="v" id="tSeat">21</span></div>
+    <div class="stub-house" id="tHouse">Giant 1.43:1 house</div>
+  </div>
+</header>
+
+<aside class="sight" aria-label="Sightlines from your seat">
+  <span class="verdict" id="sVerdict" data-level="3">Neck craning</span>
+  <dl>
+    <div><dt>Look up to center</dt><dd id="sMid">–</dd></div>
+    <div><dt>Top edge</dt><dd id="sTop">–</dd></div>
+    <div class="opt"><dt>Screen spans</dt><dd id="sSpan">–</dd></div>
+    <div class="opt"><dt>To screen</dt><dd id="sDist">–</dd></div>
+  </dl>
+</aside>
+
+<div class="console" id="console">
+  <div class="bar">
+    <button id="btnPlay" class="primary">Pause</button>
+    <button id="btnLink" aria-expanded="false" aria-controls="linkForm">Paste link</button>
+    <button id="btnLoad">Load video</button>
+    <button id="btnTab">Share a tab</button>
+    <button id="btnTest">Test film</button>
+    <button id="btnPlayer" aria-pressed="false" hidden>Use player</button>
+    <span class="spacer"></span>
+    <button id="btnPhoto" title="Save what you see as a photo">Photo</button>
+    <button id="btnVR" aria-disabled="true">Enter VR</button>
+    <button id="btnFull">Full screen</button>
+    <button id="btnHide" title="Hide controls (H)">Hide</button>
+    <button id="btnMore" aria-expanded="true" aria-controls="tray">Seat &amp; view</button>
+  </div>
+  <form class="linkrow" id="linkForm" novalidate hidden>
+    <input type="text" id="linkInput" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Video link" placeholder="Paste a YouTube, Twitch or Vimeo link, or a direct .mp4 / .m3u8 stream">
+    <button type="submit" class="primary">Put it on screen</button>
+  </form>
+  <div class="tray" id="tray">
+    <label class="field"><span class="lab">Theater</span>
+      <select id="selTheater"></select></label>
+    <label class="field"><span class="lab">Row <output id="oRow">A</output></span>
+      <input type="range" id="rngRow" min="0" max="21" step="1" value="0"></label>
+    <label class="field"><span class="lab">Seat <output id="oSeat">21</output></span>
+      <input type="range" id="rngSeat" min="1" max="41" step="1" value="21"></label>
+    <div class="field"><label class="lab" for="rngFov">Lens <output id="oFov">108°</output></label>
+      <input type="range" id="rngFov" min="50" max="130" step="1" value="108">
+      <div class="chips"><button data-fov="72">1× phone</button><button data-fov="108">0.5× phone</button><button data-fov="125">Ultra</button></div></div>
+    <label class="field"><span class="lab">Picture</span>
+      <select id="selFit"><option value="fit">Fit (black bars)</option><option value="fill">Fill screen (crop)</option><option value="stretch">Stretch</option></select></label>
+    <div class="field"><span class="lab">Guides</span>
+      <label class="check"><input type="checkbox" id="chkGuides"> 1 m grid and a person for scale</label></div>
+    <p class="hint">Drag to look around · scroll to change lens · Ctrl+V pastes a video link · ↑ ↓ rows · ← → seats · Space plays · H hides controls · double-click recenters</p>
+  </div>
+</div>
+<button id="btnShow" hidden>Show controls</button>
+<button class="sound" id="btnSound" hidden>Sound is off · tap or click anywhere for sound</button>
+<input type="file" id="file" accept="video/*" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="drop" id="drop" hidden><p>Drop it on the screen</p></div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const deg = THREE.MathUtils.radToDeg, rad = THREE.MathUtils.degToRad;
+const EYE = 1.15;                         // seated eye height above the row's floor, metres
+const ROWS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';  // theaters skip I and O
+// Inside Claude's page viewer, outside players and outside video hosts are blocked.
+const inClaude = (() => { try { return !!window.claude || window.top !== window.self; } catch { return true; } })();
+// What plays when the page opens. ?v=<YouTube id> or ?link=<any supported link> overrides it.
+const DEFAULT_LINK = 'https://www.youtube.com/watch?v=99Ptctl5_qQ';
+
+// Real-world-ish houses. Metres. R = screen curve radius (0 = flat).
+const THEATERS = {
+  giant:    { key:'giant',    label:'Giant screen · 1.43:1 (IMAX 70mm film)', short:'Giant 1.43:1 house',
+              W:26, H:18.2, bottom:0.9, R:50, front:5.6, rowDepth:1.0,  rise:0.42, rows:22, seats:41, seatW:0.58 },
+  laser:    { key:'laser',    label:'Wide screen · 1.90:1 (IMAX with Laser)',  short:'Wide 1.90:1 house',
+              W:20, H:10.5, bottom:1.5, R:60, front:4.6, rowDepth:1.05, rise:0.34, rows:17, seats:31, seatW:0.58 },
+  standard: { key:'standard', label:'Standard multiplex · 1.85:1',            short:'Standard 1.85:1 house',
+              W:13, H:7.0,  bottom:1.6, R:0,  front:4.2, rowDepth:1.1,  rise:0.28, rows:14, seats:21, seatW:0.58 },
+};
+
+let T = THEATERS.giant, row = 0, seat = 21;
+let yaw = 0, pitch = 0, fovLong = 108, fit = 'fit', guides = false;
+let source = 'test', filmPlaying = true, filmTime = 0;   // source: 'test' | 'video' | 'embed'
+
+// ---------- renderer ----------
+const canvas = $('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 300);
+camera.rotation.order = 'YXZ';
+camera.position.set(0, EYE, 0);
+const rig = new THREE.Group();
+rig.add(camera);
+scene.add(rig);
+
+scene.add(new THREE.AmbientLight(0x8a96b8, 0.05));
+const screenLight = new THREE.DirectionalLight(0xffffff, 1);
+scene.add(screenLight, screenLight.target);
+const spill = new THREE.HemisphereLight(0xffffff, 0x000000, 0.1);
+scene.add(spill);
+
+const M = {
+  carpet: new THREE.MeshStandardMaterial({ color: 0x1a1b22, roughness: 1 }),
+  wall:   new THREE.MeshStandardMaterial({ color: 0x0d0d11, roughness: 1 }),
+  seat:   new THREE.MeshStandardMaterial({ color: 0x243463, roughness: 0.85 }),
+  arm:    new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.55 }),
+  step:   new THREE.MeshBasicMaterial({ color: 0xf2a93b }),
+  figure: new THREE.MeshStandardMaterial({ color: 0x8a8a96, roughness: 0.8 }),
+};
+
+// ---------- picture sources ----------
+const video = document.createElement('video');
+video.playsInline = true; video.loop = true; video.crossOrigin = 'anonymous'; video.preload = 'auto';
+const videoTex = new THREE.VideoTexture(video);
+videoTex.colorSpace = THREE.SRGBColorSpace;
+videoTex.generateMipmaps = true;
+videoTex.minFilter = THREE.LinearMipmapLinearFilter;
+videoTex.anisotropy = maxAniso;
+
+const film = document.createElement('canvas');
+const fctx = film.getContext('2d');
+let filmTex = null, stars = [];
+
+function makeFilm(aspect) {
+  film.width = 1280; film.height = Math.round(1280 / aspect);
+  stars = Array.from({ length: 240 }, () => ({ x: Math.random(), y: Math.random() * 0.56, r: Math.random() * 1.7 + 0.4, p: Math.random() * 6.3 }));
+  if (filmTex) filmTex.dispose();
+  filmTex = new THREE.CanvasTexture(film);
+  filmTex.colorSpace = THREE.SRGBColorSpace;
+  filmTex.anisotropy = maxAniso;
+  drawFilm(filmTime);
+}
+
+function drawShip(c, x, y, u, t) {
+  c.save(); c.translate(x, y); c.rotate(Math.sin(t * 1.1) * 0.025); c.fillStyle = '#03040b';
+  c.beginPath();
+  c.moveTo(-24*u, 0); c.quadraticCurveTo(-29*u, -5*u, -32*u, -11*u); c.lineTo(-21*u, -3*u);
+  c.lineTo(21*u, -3*u); c.lineTo(31*u, -12*u); c.quadraticCurveTo(28*u, -4*u, 23*u, 0); c.closePath(); c.fill();
+  c.fillRect(-0.7*u, -36*u, 1.4*u, 33*u);
+  c.beginPath(); c.moveTo(-14*u, -33*u); c.lineTo(14*u, -33*u); c.quadraticCurveTo(17*u, -20*u, 13*u, -8*u);
+  c.lineTo(-13*u, -8*u); c.quadraticCurveTo(-10*u, -20*u, -14*u, -33*u); c.fill();
+  c.strokeStyle = '#03040b'; c.lineWidth = 0.8*u;
+  for (let i = -4; i <= 4; i++) { const s = Math.sin(t * 2 + i * 0.5) * 2*u; c.beginPath(); c.moveTo(i*4*u, -2*u); c.lineTo(i*4*u - 3*u + s, 7*u); c.stroke(); }
+  c.restore();
+}
+
+function drawFilm(t) {
+  const w = film.width, h = film.height, c = fctx, hz = h * 0.6;
+  let g = c.createLinearGradient(0, 0, 0, hz);
+  g.addColorStop(0, '#040817'); g.addColorStop(0.45, '#14244d'); g.addColorStop(0.8, '#5d4a78'); g.addColorStop(1, '#f19a5e');
+  c.fillStyle = g; c.fillRect(0, 0, w, hz + 1);
+  c.fillStyle = '#fff';
+  for (const s of stars) { c.globalAlpha = (0.35 + 0.65 * Math.abs(Math.sin(t * 0.7 + s.p))) * (1 - s.y / 0.62); c.fillRect(s.x * w, s.y * h, s.r, s.r); }
+  c.globalAlpha = 1;
+  const mx = w * 0.66, my = h * 0.27, mr = h * 0.14;
+  g = c.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 3.2);
+  g.addColorStop(0, 'rgba(255,232,196,.32)'); g.addColorStop(1, 'rgba(255,232,196,0)');
+  c.fillStyle = g; c.fillRect(0, 0, w, hz);
+  c.fillStyle = '#fbf0da'; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgba(170,150,130,.22)';
+  for (const [ox, oy, rr] of [[-0.3, -0.2, 0.28], [0.25, 0.1, 0.22], [-0.05, 0.38, 0.18], [0.35, -0.35, 0.12]]) { c.beginPath(); c.arc(mx + ox * mr, my + oy * mr, rr * mr, 0, Math.PI * 2); c.fill(); }
+  g = c.createLinearGradient(0, hz, 0, h);
+  g.addColorStop(0, '#2b2c52'); g.addColorStop(0.35, '#121733'); g.addColorStop(1, '#03050c');
+  c.fillStyle = g; c.fillRect(0, hz, w, h - hz);
+  g = c.createLinearGradient(0, hz - h * 0.04, 0, hz + h * 0.03);
+  g.addColorStop(0, 'rgba(255,170,110,0)'); g.addColorStop(0.6, 'rgba(255,170,110,.35)'); g.addColorStop(1, 'rgba(255,170,110,0)');
+  c.fillStyle = g; c.fillRect(0, hz - h * 0.04, w, h * 0.07);
+  for (let k = 1; k < 44; k++) {
+    const f = k / 44, y = hz + Math.pow(f, 1.7) * (h - hz), amp = 1 + f * h * 0.012;
+    c.strokeStyle = `rgba(140,160,225,${0.08 + 0.22 * (1 - f)})`; c.lineWidth = 1 + f * 3; c.beginPath();
+    for (let x = 0; x <= w; x += 20) { const yy = y + Math.sin(x * 0.01 / (0.25 + f) + t * (0.5 + f * 0.8) + k * 1.7) * amp; x ? c.lineTo(x, yy) : c.moveTo(x, yy); }
+    c.stroke();
+  }
+  for (let i = 0; i < 140; i++) {
+    const f = i / 140, y = hz + Math.pow(f, 1.4) * (h - hz), spread = mr * 0.4 + f * w * 0.1;
+    const x = mx + Math.sin(i * 12.9898) * Math.sin(t * 0.9 + i * 0.37) * spread, len = 6 + f * 70;
+    c.fillStyle = `rgba(255,238,205,${(0.25 + 0.45 * (1 - f)) * (0.5 + 0.5 * Math.sin(t * 2.6 + i * 1.3))})`;
+    c.fillRect(x - len / 2, y, len, 1 + f * 3);
+  }
+  c.fillStyle = '#04050c'; c.beginPath(); c.moveTo(0, hz + 2); c.lineTo(0, hz - h * 0.11);
+  c.quadraticCurveTo(w * 0.05, hz - h * 0.13, w * 0.09, hz - h * 0.06); c.quadraticCurveTo(w * 0.13, hz - h * 0.02, w * 0.17, hz + 2); c.closePath(); c.fill();
+  drawShip(c, w * (0.36 + 0.02 * Math.sin(t * 0.05)), hz + h * 0.012 + Math.sin(t * 1.2) * h * 0.003, h * 0.0028, t);
+  c.font = `500 ${Math.round(h * 0.02)}px "IBM Plex Mono", ui-monospace, monospace`;
+  c.fillStyle = 'rgba(236,230,218,.5)';
+  c.fillText('TEST FILM  ·  PASTE A LINK OR DROP IN A VIDEO', w * 0.03, h * 0.955);
+}
+
+// ---------- screen ----------
+function curvedPlane(w, h, R) {
+  const g = new THREE.PlaneGeometry(w, h, R ? 96 : 1, 1);
+  if (R) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const th = p.getX(i) / R; p.setXYZ(i, R * Math.sin(th), p.getY(i), R * (1 - Math.cos(th))); }
+    g.computeVertexNormals();
+  }
+  return g;
+}
+// An outside player is a flat page element, so the screen goes flat while one is showing.
+const curveR = () => (source === 'embed' ? 0 : T.R);
+
+const screenGroup = new THREE.Group(); scene.add(screenGroup);
+const backing = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0x111216 }));
+const picMat = new THREE.MeshBasicMaterial({ toneMapped: false });
+const picture = new THREE.Mesh(new THREE.BufferGeometry(), picMat);
+picture.position.z = 0.015;
+// Punches a see-through hole in the canvas where the outside player sits underneath.
+const hole = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending }));
+hole.position.z = 0.015; hole.visible = false;
+const gridMat = new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false });
+const gridMesh = new THREE.Mesh(new THREE.BufferGeometry(), gridMat);
+gridMesh.position.z = 0.03;
+screenGroup.add(backing, picture, hole, gridMesh);
+
+function makeGridTex() {
+  const PX = 40, c = document.createElement('canvas');
+  c.width = Math.round(T.W * PX); c.height = Math.round(T.H * PX);
+  const x = c.getContext('2d');
+  for (let m = 0; m <= T.W; m++) { const major = m % 5 === 0; x.strokeStyle = major ? 'rgba(255,214,140,.8)' : 'rgba(255,255,255,.3)'; x.lineWidth = major ? 3 : 1.5; x.beginPath(); x.moveTo(m * PX, 0); x.lineTo(m * PX, c.height); x.stroke(); }
+  for (let m = 0; m <= T.H; m++) { const major = m % 5 === 0, Y = c.height - m * PX; x.strokeStyle = major ? 'rgba(255,214,140,.8)' : 'rgba(255,255,255,.3)'; x.lineWidth = major ? 3 : 1.5; x.beginPath(); x.moveTo(0, Y); x.lineTo(c.width, Y); x.stroke(); }
+  x.font = '600 22px "IBM Plex Mono", ui-monospace, monospace'; x.fillStyle = 'rgba(255,214,140,.95)';
+  for (let m = 5; m <= T.H; m += 5) x.fillText(`${m} m`, 8, c.height - m * PX - 7);
+  if (gridMat.map) gridMat.map.dispose();
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = maxAniso;
+  gridMat.map = tex; gridMat.needsUpdate = true;
+}
+
+function contentAspect() {
+  if (source === 'test') return T.W / T.H;
+  return video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+}
+function layoutPicture() {
+  const embedOn = source === 'embed';
+  picture.visible = !embedOn; hole.visible = embedOn; $('ytScreen').hidden = !embedOn;
+  if (embedOn) { layoutEmbed(); return; }
+  const tex = source === 'test' ? filmTex : videoTex;
+  const sa = T.W / T.H, va = contentAspect();
+  let w = T.W, h = T.H;
+  tex.repeat.set(1, 1); tex.offset.set(0, 0);
+  if (fit === 'fit') { if (va > sa) h = T.W / va; else w = T.H * va; }
+  else if (fit === 'fill') {
+    if (va > sa) { const k = sa / va; tex.repeat.set(k, 1); tex.offset.set((1 - k) / 2, 0); }
+    else { const k = va / sa; tex.repeat.set(1, k); tex.offset.set(0, (1 - k) / 2); }
+  }
+  picture.geometry.dispose(); picture.geometry = curvedPlane(w, h, curveR());
+  picMat.map = tex; picMat.needsUpdate = true;
+}
+function buildScreen() {
+  const R = curveR();
+  screenGroup.position.set(0, T.bottom + T.H / 2, 0);
+  backing.geometry.dispose(); backing.geometry = curvedPlane(T.W, T.H, R);
+  gridMesh.geometry.dispose(); gridMesh.geometry = curvedPlane(T.W, T.H, R);
+  hole.geometry.dispose(); hole.geometry = curvedPlane(T.W, T.H, 0);
+  makeGridTex();
+  layoutPicture();
+  screenLight.position.set(0, T.bottom + T.H / 2, 0);
+  screenLight.target.position.set(0, 0, T.front + T.rows * T.rowDepth * 0.5);
+}
+
+// ---------- outside players: a CSS 3D page layer that uses the same camera ----------
+const EMBED_PX = 1920;                  // player width in CSS pixels; YouTube picks 1080p at this size
+const embedMatrix = new THREE.Matrix4();
+const cssCam = $('cssCam'), ytScreen = $('ytScreen');
+const embed = { frame: null, kind: null, playing: false, timers: [] };
+const ORIGIN = { youtube: 'https://www.youtube.com', vimeo: 'https://player.vimeo.com', twitch: 'https://player.twitch.tv' };
+
+function layoutEmbed() {
+  const pxW = EMBED_PX, pxH = Math.round(EMBED_PX * T.H / T.W);
+  ytScreen.style.width = pxW + 'px'; ytScreen.style.height = pxH + 'px';
+  const f = embed.frame;
+  if (f) {
+    // Fit and Stretch: the player fills the screen and letterboxes inside itself. Fill: size it to 16:9 and crop.
+    let fw = pxW, fh = pxH;
+    if (fit === 'fill') { const va = 16 / 9; if (va > pxW / pxH) fw = Math.round(pxH * va); else fh = Math.round(pxW / va); }
+    Object.assign(f.style, { width: fw + 'px', height: fh + 'px', left: Math.round((pxW - fw) / 2) + 'px', top: Math.round((pxH - fh) / 2) + 'px' });
+  }
+  const s = T.W / pxW;
+  embedMatrix.compose(new THREE.Vector3(0, T.bottom + T.H / 2, 0.015), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+}
+const ce = v => (Math.abs(v) < 1e-10 ? 0 : v);
+function renderCSS() {
+  const hw = innerWidth / 2, hh = innerHeight / 2;
+  const d = camera.projectionMatrix.elements[5] * hh;    // focal length in CSS pixels
+  const m = camera.matrixWorldInverse.elements;
+  cssCam.style.transform = `perspective(${d}px) translateZ(${d}px) matrix3d(${ce(m[0])},${ce(-m[1])},${ce(m[2])},${ce(m[3])},${ce(m[4])},${ce(-m[5])},${ce(m[6])},${ce(m[7])},${ce(m[8])},${ce(-m[9])},${ce(m[10])},${ce(m[11])},${ce(m[12])},${ce(-m[13])},${ce(m[14])},${ce(m[15])}) translate(${hw}px,${hh}px)`;
+  const o = embedMatrix.elements;
+  ytScreen.style.transform = `translate(-50%,-50%) matrix3d(${ce(o[0])},${ce(o[1])},${ce(o[2])},${ce(o[3])},${ce(-o[4])},${ce(-o[5])},${ce(-o[6])},${ce(-o[7])},${ce(o[8])},${ce(o[9])},${ce(o[10])},${ce(o[11])},${ce(o[12])},${ce(o[13])},${ce(o[14])},${ce(o[15])})`;
+}
+
+function parseTime(t) {
+  if (!t) return 0;
+  if (/^\d+$/.test(t)) return +t;
+  const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+}
+function parseLink(raw) {
+  let u; try { u = new URL(raw.trim()); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const h = u.hostname.replace(/^(www|m|music)\./, '');
+  const start = parseTime(u.searchParams.get('t') || u.searchParams.get('start'));
+  const list = u.searchParams.get('list') || '';
+  let m;
+  if (h === 'youtu.be' && (m = u.pathname.match(/^\/([\w-]{11})/))) return { kind: 'youtube', id: m[1], start, list, name: 'YouTube' };
+  if (h === 'youtube.com' || h === 'youtube-nocookie.com') {
+    const v = u.searchParams.get('v');
+    if (v && /^[\w-]{11}$/.test(v)) return { kind: 'youtube', id: v, start, list, name: 'YouTube' };
+    if ((m = u.pathname.match(/^\/(?:shorts|live|embed|v)\/([\w-]{11})/))) return { kind: 'youtube', id: m[1], start, list, name: 'YouTube' };
+    if (list) return { kind: 'youtube', id: '', start: 0, list, name: 'YouTube' };
+    return { kind: 'bad', why: 'That YouTube address has no video in it. Open the video itself and copy its address.' };
+  }
+  if (h === 'twitch.tv') {
+    const p = u.pathname.split('/').filter(Boolean);
+    if (p[0] === 'videos' && /^\d+$/.test(p[1] || '')) return { kind: 'twitch', video: 'v' + p[1], name: 'Twitch' };
+    if (p[0] && /^\w+$/.test(p[0])) return { kind: 'twitch', channel: p[0], name: 'Twitch' };
+  }
+  if ((h === 'vimeo.com' || h === 'player.vimeo.com') && (m = u.pathname.match(/\/(\d{5,})(?:\/([0-9a-f]{6,}))?/))) {
+    return { kind: 'vimeo', id: m[1], hash: m[2] || u.searchParams.get('h') || '', name: 'Vimeo' };
+  }
+  return { kind: 'direct', url: u.href, hls: /\.m3u8$/i.test(u.pathname), name: decodeURIComponent(u.pathname.split('/').pop() || u.hostname) };
+}
+function embedSrc(L, muted) {
+  if (L.kind === 'youtube') {
+    const q = new URLSearchParams({ enablejsapi: '1', autoplay: '1', playsinline: '1', rel: '0', iv_load_policy: '3', origin: location.origin });
+    if (muted) q.set('mute', '1');
+    if (L.start) q.set('start', String(L.start));
+    if (L.list) q.set('list', L.list);
+    return `https://www.youtube.com/embed/${L.id || 'videoseries'}?${q}`;
+  }
+  if (L.kind === 'vimeo') return `https://player.vimeo.com/video/${L.id}?autoplay=1&playsinline=1${muted ? '&muted=1' : ''}${L.hash ? `&h=${L.hash}` : ''}`;
+  const q = new URLSearchParams({ parent: location.hostname, autoplay: 'true', muted: muted ? 'true' : 'false' });
+  if (L.video) q.set('video', L.video); else q.set('channel', L.channel);
+  return `https://player.twitch.tv/?${q}`;
+}
+function embedPost(obj) {
+  const w = embed.frame && embed.frame.contentWindow;
+  if (w) w.postMessage(JSON.stringify(obj), ORIGIN[embed.kind]);
+}
+function handshake() {
+  if (embed.kind === 'youtube') {
+    embedPost({ event: 'listening', id: 1, channel: 'widget' });
+    for (const ev of ['onReady', 'onStateChange', 'onError']) embedPost({ event: 'command', func: 'addEventListener', args: [ev], id: 1, channel: 'widget' });
+  } else if (embed.kind === 'vimeo') {
+    for (const ev of ['play', 'pause', 'ended', 'error']) embedPost({ method: 'addEventListener', value: ev });
+  }
+}
+function embedCommand(play) {
+  if (embed.kind === 'youtube') embedPost({ event: 'command', func: play ? 'playVideo' : 'pauseVideo', args: [], id: 1, channel: 'widget' });
+  else if (embed.kind === 'vimeo') embedPost({ method: play ? 'play' : 'pause' });
+  else { toast('Twitch uses its own controls. Press "Use player", then click the video.'); return; }
+  embed.playing = play;
+}
+const YT_ERR = {
+  2: 'YouTube says that link is broken. Copy the video address again.',
+  5: 'YouTube could not play this video in an embedded player.',
+  100: 'That YouTube video is private or was removed.',
+  101: "This video's owner doesn't allow it to play outside YouTube. Try another video, or use Share a tab.",
+  150: "This video's owner doesn't allow it to play outside YouTube. Try another video, or use Share a tab.",
+  153: 'YouTube needs this page to have a web address. Start it with play.cmd instead of opening the file directly.',
+};
+addEventListener('message', e => {
+  if (!embed.frame || e.source !== embed.frame.contentWindow) return;
+  let d = e.data;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
+  if (!d || typeof d !== 'object') return;
+  if (embed.kind === 'youtube') {
+    const st = d.event === 'onStateChange' ? d.info
+      : d.event === 'infoDelivery' && d.info && typeof d.info.playerState === 'number' ? d.info.playerState : null;
+    if (typeof st === 'number') { embed.playing = st === 1 || st === 3; updatePlay(); }
+    if (d.event === 'onError') toast(YT_ERR[d.info] || `YouTube could not play this video (error ${d.info}).`, 9000);
+  } else if (embed.kind === 'vimeo') {
+    if (d.event === 'ready') handshake();
+    if (d.event === 'play' || d.event === 'playing') { embed.playing = true; updatePlay(); }
+    if (d.event === 'pause' || d.event === 'ended') { embed.playing = false; updatePlay(); }
+    if (d.event === 'error') toast("Vimeo couldn't play this video. Its owner may not allow it on other sites.", 8000);
+  }
+});
+// Browsers only autoplay muted video on page open, so the opening video starts muted
+// and the visitor's first click, tap or key press turns the sound on.
+let soundPending = false;
+function setSoundPending(on) { soundPending = on; $('btnSound').hidden = !on; }
+function wantSound() {
+  if (!soundPending) return;
+  setSoundPending(false);
+  if (source === 'embed') {
+    if (embed.kind === 'youtube') {
+      embedPost({ event: 'command', func: 'unMute', args: [], id: 1, channel: 'widget' });
+      embedPost({ event: 'command', func: 'setVolume', args: [100], id: 1, channel: 'widget' });
+      embedPost({ event: 'command', func: 'playVideo', args: [], id: 1, channel: 'widget' });
+    } else if (embed.kind === 'vimeo') {
+      embedPost({ method: 'setMuted', value: false }); embedPost({ method: 'setVolume', value: 1 }); embedPost({ method: 'play' });
+    } else toast('Twitch starts muted. Press "Use player" and use its volume control.');
+  } else if (source === 'video' && video.muted && videoFrom === 'url') { video.muted = false; video.play().catch(() => {}); }
+}
+addEventListener('pointerdown', wantSound, true);
+addEventListener('keydown', wantSound, true);
+
+function stopEmbed() {
+  embed.timers.forEach(clearTimeout); embed.timers = [];
+  if (embed.frame) { embed.frame.src = 'about:blank'; embed.frame.remove(); }
+  embed.frame = null; embed.kind = null; embed.playing = false;
+  setSoundPending(false);
+}
+function startEmbed(L, opts = {}) {
+  stopEmbed(); stopVideo();
+  const f = document.createElement('iframe');
+  f.title = `${L.name} player`;
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  f.referrerPolicy = 'strict-origin-when-cross-origin';
+  f.addEventListener('load', () => { handshake(); embed.timers.push(setTimeout(handshake, 1000), setTimeout(handshake, 3000)); });
+  f.src = embedSrc(L, opts.muted);
+  embed.frame = f; embed.kind = L.kind; embed.playing = true;
+  ytScreen.append(f);
+  setSource('embed');
+  if (opts.muted) setSoundPending(true);
+  if (!opts.quiet) toast(L.kind === 'twitch'
+    ? 'Loading Twitch. To use its controls, press "Use player" and click the video.'
+    : `Loading ${L.name}. If it doesn't start, press Play, or "Use player" and click the video.`, 6000);
+}
+
+// direct links (.mp4, .webm, .m3u8) go onto the curved screen as a texture
+let hls = null, objectURL = null, videoFrom = 'none';
+function stopHls() { if (hls) { hls.destroy(); hls = null; } }
+function stopStream() { const s = video.srcObject; if (s) { s.getTracks().forEach(t => t.stop()); video.srcObject = null; } }
+function stopVideo() {
+  if (videoFrom !== 'none') setSoundPending(false);
+  stopStream(); stopHls(); video.pause();
+  if (video.getAttribute('src')) { video.removeAttribute('src'); video.load(); }
+  if (objectURL) { URL.revokeObjectURL(objectURL); objectURL = null; }
+  videoFrom = 'none';
+}
+function loadHlsLib() {
+  if (window.Hls) return Promise.resolve(window.Hls);
+  return new Promise(res => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
+    s.onload = () => res(window.Hls || null); s.onerror = () => res(null);
+    document.head.append(s);
+  });
+}
+const DIRECT_FAIL = "That link didn't play. A direct link only works when its site lets other pages use the video (CORS). For YouTube, Twitch or Vimeo, paste the normal page address.";
+async function loadDirect(L, opts = {}) {
+  stopEmbed(); stopVideo();
+  videoFrom = 'url'; video.muted = !!opts.muted;
+  if (L.hls && !video.canPlayType('application/vnd.apple.mpegurl')) {
+    const Hls = await loadHlsLib();
+    if (!Hls || !Hls.isSupported()) { toast('This browser cannot play .m3u8 streams.'); return; }
+    hls = new Hls();
+    hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { toast(DIRECT_FAIL, 9000); stopHls(); } });
+    hls.loadSource(L.url); hls.attachMedia(video);
+  } else video.src = L.url;
+  setSource('video');
+  if (opts.muted) setSoundPending(true);
+  video.play().catch(() => {});
+  if (!opts.quiet) toast(`Loading ${L.name}`);
+}
+
+function openLink(raw) {
+  if (!raw || !raw.trim()) { toast('Paste a video link first.'); return false; }
+  const L = parseLink(raw);
+  if (!L) { toast("That isn't a web link. It should start with https://"); return false; }
+  if (L.kind === 'bad') { toast(L.why, 7000); return false; }
+  if (inClaude) { toast("Claude's page viewer blocks YouTube and other outside video. Run the desktop copy of this page (play.cmd in the Front Row folder) and paste the link there.", 9000); return false; }
+  if (L.kind === 'direct') loadDirect(L); else startEmbed(L);
+  return true;
+}
+
+// ---------- house ----------
+const house = new THREE.Group(); scene.add(house);
+const figure = new THREE.Group(); scene.add(figure);
+{
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 1.1, 6, 12), M.figure); body.position.y = 0.74;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), M.figure); head.position.y = 1.62;
+  figure.add(body, head);
+}
+let exitTexture = null;
+function makeExitTex() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 100;
+  const x = c.getContext('2d');
+  x.fillStyle = '#06331a'; x.fillRect(0, 0, 256, 100);
+  x.fillStyle = '#58ff95'; x.font = '800 70px "Big Shoulders Display", Impact, sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('EXIT', 128, 54);
+  if (exitTexture) exitTexture.dispose();
+  exitTexture = new THREE.CanvasTexture(c); exitTexture.colorSpace = THREE.SRGBColorSpace;
+}
+function box(w, h, d, x, y, z, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); house.add(m); return m;
+}
+function buildHouse() {
+  house.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.isMaterial && o.userData.own) o.material.dispose(); });
+  house.clear();
+  const t = T, rd = t.rowDepth, S = t.seats * t.seatW;
+  const hw = Math.max(t.W / 2 + 1.2, S / 2 + 1.4);
+  const zLast = t.front + (t.rows - 1) * rd, zBack = zLast + 1.3;
+  const ceil = t.bottom + t.H + 2.4;
+  const zf0 = t.front - rd * 0.55;
+  box(2 * hw, 1, zf0 + 1.5, 0, -0.5, (zf0 - 1.5) / 2, M.carpet);
+  for (let r = 0; r < t.rows; r++) { const zr = t.front + r * rd, top = r * t.rise; box(2 * hw, top + 1, rd, 0, (top - 1) / 2, zr - 0.05 * rd, M.carpet); }
+  box(2 * hw, ceil + 2, 0.3, 0, ceil / 2, zBack + 0.15, M.wall);
+  for (const s of [-1, 1]) box(0.3, ceil + 2, zBack + 2, s * (hw + 0.15), ceil / 2, (zBack - 2) / 2, M.wall);
+  box(2 * hw + 0.6, 0.3, zBack + 2, 0, ceil + 0.15, (zBack - 2) / 2, M.wall);
+  box(2 * hw, ceil + 2, 0.3, 0, ceil / 2, -0.8, M.wall);
+
+  // seats
+  const n = t.rows * t.seats;
+  const backs = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.72, 0.09), M.seat, n);
+  const cushions = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.12, 0.48), M.seat, n);
+  const arms = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 0.5), M.arm, t.rows * (t.seats + 1));
+  const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const lean = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.17, 0, 0)), flat = new THREE.Quaternion();
+  let i = 0, j = 0;
+  for (let r = 0; r < t.rows; r++) {
+    const y = r * t.rise, z = t.front + r * rd;
+    for (let s = 1; s <= t.seats; s++, i++) {
+      const x = seatX(s);
+      backs.setMatrixAt(i, m4.compose(p.set(x, y + 0.82, z + 0.34), lean, one));
+      cushions.setMatrixAt(i, m4.compose(p.set(x, y + 0.44, z + 0.06), flat, one));
+    }
+    for (let s = 0; s <= t.seats; s++, j++) arms.setMatrixAt(j, m4.compose(p.set(seatX(s + 0.5), y + 0.64, z + 0.08), flat, one));
+    for (const sx of [-1, 1]) box(0.32, 0.035, 0.04, sx * (S / 2 + 0.45), y + 0.02, z - 0.55 * rd, M.step);
+  }
+  house.add(backs, cushions, arms);
+
+  // exit signs near the front corners
+  for (const s of [-1, 1]) {
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.29), new THREE.MeshBasicMaterial({ map: exitTexture, toneMapped: false }));
+    sign.userData.own = true;
+    sign.position.set(s * (hw - 0.02), 2.7, 2.2); sign.rotation.y = -s * Math.PI / 2;
+    house.add(sign);
+  }
+  const fx = -t.W * 0.14;
+  figure.position.set(fx, 0, (t.R ? t.R * (1 - Math.cos(fx / t.R)) : 0) + 1.1);
+}
+
+// ---------- seat ----------
+function seatX(s) { return (s - (T.seats + 1) / 2) * T.seatW; }
+function eye() { return new THREE.Vector3(rig.position.x, rig.position.y + EYE, rig.position.z); }
+function placeRig() {
+  const z = T.front + row * T.rowDepth, x = seatX(seat);
+  rig.position.set(x, row * T.rise, z);
+  rig.rotation.y = Math.atan2(x, z);            // face the middle of the screen
+  updateReadout();
+}
+function elevations() {
+  const E = eye(), d = Math.hypot(E.x, E.z);
+  return {
+    d,
+    mid: deg(Math.atan2(T.bottom + T.H / 2 - E.y, d)),
+    top: deg(Math.atan2(T.bottom + T.H - E.y, d)),
+    bot: deg(Math.atan2(T.bottom - E.y, d)),
+  };
+}
+function resetView() {
+  const e = elevations();
+  yaw = 0;
+  // keep the bottom edge of the picture in frame, but never look higher than the middle
+  pitch = rad(clamp(Math.max(e.mid * 0.5, e.bot + camera.fov * 0.38), -30, e.mid));
+}
+function updateReadout() {
+  const E = eye(), e = elevations(), R = curveR();
+  const edge = s => R ? [s * R * Math.sin(T.W / 2 / R), R * (1 - Math.cos(T.W / 2 / R))] : [s * T.W / 2, 0];
+  const [lx, lz] = edge(-1), [rx, rz] = edge(1);
+  const wide = deg(Math.atan2(rx - E.x, E.z - rz) - Math.atan2(lx - E.x, E.z - lz));
+  const tall = e.top - e.bot;
+  $('sMid').textContent = `${Math.round(Math.max(0, e.mid))}°`;
+  $('sTop').textContent = `${Math.round(e.top)}° up`;
+  $('sSpan').textContent = `${Math.round(wide)}° × ${Math.round(tall)}°`;
+  $('sDist').textContent = `${e.d.toFixed(1)} m`;
+  const v = $('sVerdict');
+  const [lvl, word] = e.mid < 10 ? [1, 'Easy on the neck'] : e.mid < 25 ? [1, 'Chin up'] : e.mid < 40 ? [2, 'Head tilted back'] : [3, 'Neck craning'];
+  v.dataset.level = lvl; v.textContent = word;
+  $('tRow').textContent = ROWS[row];
+  $('tSeat').textContent = seat;
+  $('tHouse').textContent = `${T.short} · screen ${T.W} × ${T.H} m (${Math.round(T.H / 3)} storeys)`;
+}
+
+// ---------- inputs ----------
+const sel = $('selTheater');
+for (const t of Object.values(THEATERS)) sel.add(new Option(t.label, t.key));
+function syncInputs() {
+  sel.value = T.key;
+  const rr = $('rngRow'); rr.max = T.rows - 1; rr.value = row;
+  $('oRow').textContent = ROWS[row] + (row === 0 ? ' · front' : row === T.rows - 1 ? ' · back' : '');
+  const rs = $('rngSeat'); rs.max = T.seats; rs.value = seat;
+  $('oSeat').textContent = seat === Math.ceil(T.seats / 2) ? `${seat} · center` : seat;
+  $('rngFov').value = fovLong;
+  $('oFov').textContent = `${fovLong}°`;
+  $('selFit').value = fit;
+  $('chkGuides').checked = guides;
+}
+function setTheater(key) {
+  T = THEATERS[key];
+  row = clamp(row, 0, T.rows - 1); seat = Math.ceil(T.seats / 2);
+  makeFilm(T.W / T.H); buildScreen(); buildHouse(); placeRig(); resetView(); syncInputs();
+}
+function setRow(r) { r = clamp(r, 0, T.rows - 1); if (r === row) return; row = r; placeRig(); if (!renderer.xr.isPresenting) resetView(); syncInputs(); }
+function setSeat(s) { s = clamp(s, 1, T.seats); if (s === seat) return; seat = s; placeRig(); if (!renderer.xr.isPresenting) resetView(); syncInputs(); }
+function setFov(f) { fovLong = Math.round(clamp(f, 50, 130)); applyFov(); syncInputs(); }
+function setGuides(on) { guides = on; gridMesh.visible = on; figure.visible = on; syncInputs(); }
+
+sel.addEventListener('change', () => setTheater(sel.value));
+$('rngRow').addEventListener('input', e => setRow(+e.target.value));
+$('rngSeat').addEventListener('input', e => setSeat(+e.target.value));
+$('rngFov').addEventListener('input', e => setFov(+e.target.value));
+document.querySelectorAll('[data-fov]').forEach(b => b.addEventListener('click', () => setFov(+b.dataset.fov)));
+$('selFit').addEventListener('change', e => { fit = e.target.value; layoutPicture(); });
+$('chkGuides').addEventListener('change', e => setGuides(e.target.checked));
+
+function applyFov() {
+  const a = innerWidth / innerHeight;
+  camera.aspect = a;
+  camera.fov = a >= 1 ? deg(2 * Math.atan(Math.tan(rad(fovLong) / 2) / a)) : fovLong;
+  camera.updateProjectionMatrix();
+}
+
+// look around: grab the world and drag it
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); });
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const k = rad(camera.fov) / canvas.clientHeight;
+  yaw += (e.clientX - drag.x) * k; pitch = clamp(pitch + (e.clientY - drag.y) * k, -1.3, 1.5);
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+const endDrag = e => { if (drag && e.pointerId === drag.id) { drag = null; canvas.classList.remove('dragging'); } };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('wheel', e => { e.preventDefault(); setFov(fovLong + Math.sign(e.deltaY) * 4); }, { passive: false });
+canvas.addEventListener('dblclick', resetView);
+
+addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  switch (e.key) {
+    case 'ArrowUp': setRow(row - 1); break;
+    case 'ArrowDown': setRow(row + 1); break;
+    case 'ArrowLeft': setSeat(seat - 1); break;
+    case 'ArrowRight': setSeat(seat + 1); break;
+    case ' ': togglePlay(); break;
+    case 'r': case 'R': resetView(); break;
+    case 'g': case 'G': setGuides(!guides); break;
+    case 'h': case 'H': setBare(!document.body.classList.contains('bare')); break;
+    case 'f': case 'F': fullscreen(); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+
+// paste a link anywhere on the page
+addEventListener('paste', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const text = e.clipboardData && e.clipboardData.getData('text');
+  if (text && /^\s*https?:\/\//i.test(text)) { e.preventDefault(); openLink(text); }
+});
+
+// ---------- playback ----------
+function isPlaying() { return source === 'test' ? filmPlaying : source === 'embed' ? embed.playing : !video.paused; }
+function updatePlay() { $('btnPlay').textContent = isPlaying() ? 'Pause' : 'Play'; }
+function togglePlay() {
+  if (source === 'test') filmPlaying = !filmPlaying;
+  else if (source === 'embed') embedCommand(!embed.playing);
+  else if (video.paused) video.play().catch(() => {});
+  else video.pause();
+  updatePlay();
+}
+let playerMode = false;
+function setPlayerMode(on) {
+  playerMode = on;
+  document.body.classList.toggle('player', on);
+  const b = $('btnPlayer');
+  b.textContent = on ? 'Back to looking' : 'Use player';
+  b.setAttribute('aria-pressed', String(on));
+  if (on) toast('Clicks now go to the player. Press "Back to looking" to look around again.');
+}
+$('btnPlayer').addEventListener('click', () => setPlayerMode(!playerMode));
+
+function setSource(s) {
+  const flip = (source === 'embed') !== (s === 'embed');
+  source = s;
+  if (flip) buildScreen(); else layoutPicture();
+  if (s !== 'embed') { stopEmbed(); if (playerMode) setPlayerMode(false); }
+  $('btnPlayer').hidden = s !== 'embed';
+  updateReadout(); updatePlay();
+}
+function loadFile(f) {
+  if (!f) return;
+  if (!/^video\//.test(f.type) && !/\.(mp4|m4v|webm|mov|mkv|ogv)$/i.test(f.name)) { toast('That file is not a video. Try an MP4 or WebM.'); return; }
+  stopEmbed(); stopVideo();
+  objectURL = URL.createObjectURL(f); videoFrom = 'file';
+  video.muted = false; video.src = objectURL;
+  setSource('video');
+  video.play().catch(() => toast('Press Play to start the video.'));
+  toast(`Now showing: ${f.name}`);
+}
+video.addEventListener('loadedmetadata', () => { if (source === 'video') layoutPicture(); });
+video.addEventListener('resize', () => { if (source === 'video') layoutPicture(); });
+video.addEventListener('play', updatePlay);
+video.addEventListener('pause', updatePlay);
+video.addEventListener('error', () => {
+  if (source !== 'video' || video.srcObject) return;
+  if (videoFrom === 'url') toast(DIRECT_FAIL, 9000);
+  else if (videoFrom === 'file') toast("This video won't play in your browser. MP4 (H.264) or WebM files work best.");
+});
+
+$('btnPlay').addEventListener('click', togglePlay);
+$('btnLoad').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+function showTestFilm() { stopVideo(); filmPlaying = true; setSource('test'); }
+$('btnTest').addEventListener('click', showTestFilm);
+
+const linkForm = $('linkForm'), linkInput = $('linkInput'), btnLink = $('btnLink');
+function setLinkRow(open) { linkForm.hidden = !open; btnLink.setAttribute('aria-expanded', String(open)); if (open) { linkInput.focus(); linkInput.select(); } placeToast(); }
+btnLink.addEventListener('click', () => setLinkRow(linkForm.hidden));
+linkForm.addEventListener('submit', e => { e.preventDefault(); if (openLink(linkInput.value)) setLinkRow(false); });
+linkInput.addEventListener('keydown', e => { if (e.key === 'Escape') { setLinkRow(false); canvas.focus(); } });
+
+const policy = document.permissionsPolicy || document.featurePolicy;
+const allowed = f => { try { return !policy || !policy.allowsFeature || policy.allowsFeature(f); } catch { return true; } };
+
+const btnTab = $('btnTab');
+if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) btnTab.hidden = true;
+btnTab.addEventListener('click', async () => {
+  if (!allowed('display-capture')) { toast('Tab sharing is switched off where this page is hosted. Run the desktop copy (play.cmd) to share a tab.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: false, selfBrowserSurface: 'exclude' });
+    stopEmbed(); stopVideo();
+    video.srcObject = stream; video.muted = true; videoFrom = 'tab';
+    stream.getVideoTracks()[0].addEventListener('ended', () => { if (video.srcObject === stream) showTestFilm(); });
+    setSource('video');
+    await video.play();
+    toast('Sharing that tab. Its sound keeps playing from the tab itself.');
+  } catch (e) {
+    if (e && e.name !== 'AbortError') toast(e.name === 'NotAllowedError' ? 'Sharing was cancelled or blocked.' : 'Could not share that tab.');
+  }
+});
+
+// drag a video file anywhere
+let dragDepth = 0;
+const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $('drop').hidden = false; });
+addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('drop').hidden = true; } });
+addEventListener('drop', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $('drop').hidden = true; loadFile(e.dataTransfer.files[0]); });
+
+// ---------- chrome ----------
+let toastTimer = 0;
+function placeToast() {
+  const c = $('console');
+  const h = document.body.classList.contains('bare') ? 40 : c.getBoundingClientRect().height;
+  $('toast').style.bottom = `calc(${Math.round(h) + 28}px + env(safe-area-inset-bottom, 0px))`;
+}
+function toast(msg, ms = 4500) {
+  const el = $('toast'); el.textContent = msg; el.hidden = false; placeToast();
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+function setBare(on) { document.body.classList.toggle('bare', on); $('btnShow').hidden = !on; placeToast(); }
+$('btnHide').addEventListener('click', () => setBare(true));
+$('btnShow').addEventListener('click', () => setBare(false));
+const more = $('btnMore');
+function setTray(open) { $('console').classList.toggle('collapsed', !open); more.setAttribute('aria-expanded', String(open)); placeToast(); }
+more.addEventListener('click', () => setTray(more.getAttribute('aria-expanded') !== 'true'));
+if (innerWidth < 720 || innerHeight < 760) setTray(false);
+
+function fullscreen() {
+  const d = document;
+  if (d.fullscreenElement) { d.exitFullscreen && d.exitFullscreen(); return; }
+  const p = d.documentElement.requestFullscreen ? d.documentElement.requestFullscreen() : Promise.reject();
+  p.catch(() => toast('Full screen is not available here.'));
+}
+$('btnFull').addEventListener('click', fullscreen);
+
+$('btnPhoto').addEventListener('click', async () => {
+  if (renderer.xr.isPresenting) return;
+  if (source === 'embed') { toast("Outside players don't let pages capture their picture, so a photo would show a black screen. Use Share a tab to photograph a YouTube video.", 8000); return; }
+  renderer.render(scene, camera);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+  if (!blob) { toast('Could not capture the picture.'); return; }
+  const name = `front-row-${T.key}-row-${ROWS[row]}-seat-${seat}.jpg`;
+  let dl = null;
+  try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch { dl = null; }
+  if (dl) {
+    try { await dl.save({ filename: name, data: blob }); toast('Photo saved.'); }
+    catch (e) { if (!e || e.code !== 'declined') toast('Saving photos is not available here.'); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('Photo downloaded.');
+});
+
+// ---------- VR ----------
+const btnVR = $('btnVR');
+let vrState = 'checking';
+const VR_MSG = {
+  checking: 'Still checking for a VR headset.',
+  blocked: 'VR is switched off where this page is hosted. Open a copy on a regular https website in your headset browser.',
+  nobrowser: 'This browser has no WebXR. Open the page in a headset browser such as Meta Quest Browser.',
+  noheadset: 'No VR headset found. Open this page in your headset’s browser, or connect a PC VR headset.',
+};
+function paintVR() {
+  btnVR.textContent = renderer.xr.isPresenting ? 'Exit VR' : 'Enter VR';
+  btnVR.setAttribute('aria-disabled', vrState === 'ok' ? 'false' : 'true');
+  btnVR.title = vrState === 'ok' ? 'Sit in this seat in VR' : VR_MSG[vrState];
+}
+async function checkVR() {
+  if (!allowed('xr-spatial-tracking')) vrState = 'blocked';
+  else if (!navigator.xr) vrState = 'nobrowser';
+  else { try { vrState = (await navigator.xr.isSessionSupported('immersive-vr')) ? 'ok' : 'noheadset'; } catch { vrState = 'blocked'; } }
+  paintVR();
+}
+btnVR.addEventListener('click', async () => {
+  if (renderer.xr.isPresenting) { renderer.xr.getSession().end(); return; }
+  if (vrState !== 'ok') { toast(VR_MSG[vrState]); return; }
+  if (source === 'embed') { toast("YouTube, Twitch and Vimeo players can't be drawn inside VR. Use Share a tab (on a PC VR setup) or a video file.", 8000); return; }
+  try {
+    const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+    await renderer.xr.setSession(session);
+    if (source === 'video' && video.paused) video.play().catch(() => {});
+  } catch (e) { toast(`The headset did not start VR (${e && (e.message || e.name)}).`); }
+});
+renderer.xr.addEventListener('sessionstart', paintVR);
+renderer.xr.addEventListener('sessionend', () => { camera.position.set(0, EYE, 0); camera.quaternion.identity(); camera.rotation.order = 'YXZ'; resetView(); resize(); paintVR(); });
+for (let i = 0; i < 2; i++) renderer.xr.getController(i).addEventListener('select', togglePlay);
+let xrCool = 0;
+function pollXR(t) {
+  const s = renderer.xr.getSession(); if (!s || t < xrCool) return;
+  for (const src of s.inputSources) {
+    const a = src.gamepad && src.gamepad.axes; if (!a || a.length < 4) continue;
+    if (a[3] < -0.75) { setRow(row - 1); xrCool = t + 400; }
+    else if (a[3] > 0.75) { setRow(row + 1); xrCool = t + 400; }
+    else if (a[2] > 0.75) { setSeat(seat + 1); xrCool = t + 250; }
+    else if (a[2] < -0.75) { setSeat(seat - 1); xrCool = t + 250; }
+  }
+}
+
+// ---------- screen glow lights the room ----------
+const lc = document.createElement('canvas'); lc.width = lc.height = 6;
+const lctx = lc.getContext('2d', { willReadFrequently: true });
+const glow = new THREE.Color(0.55, 0.6, 0.8), glowTarget = glow.clone();
+let glowLum = 0.25, glowLumTarget = 0.25;
+function sampleScreen() {
+  if (source === 'embed') { glowTarget.setRGB(0.5, 0.55, 0.7); glowLumTarget = 0.22; return; }   // outside players can't be read
+  const src = source === 'test' ? film : video;
+  if (source === 'video' && video.readyState < 2) return;
+  try {
+    lctx.drawImage(src, 0, 0, 6, 6);
+    const d = lctx.getImageData(0, 0, 6, 6).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    glowTarget.setRGB(r / 9180, g / 9180, b / 9180, THREE.SRGBColorSpace);   // 36 px × 255
+    glowLumTarget = 0.2126 * glowTarget.r + 0.7152 * glowTarget.g + 0.0722 * glowTarget.b;
+  } catch { /* cross-origin frame: keep the last glow */ }
+}
+
+// ---------- loop ----------
+function resize() {
+  if (renderer.xr.isPresenting) return;
+  renderer.setSize(innerWidth, innerHeight, false);
+  cssCam.style.width = innerWidth + 'px'; cssCam.style.height = innerHeight + 'px';
+  applyFov(); placeToast();
+}
+addEventListener('resize', resize);
+
+let last = performance.now(), filmAcc = 1, frameN = 0;
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now;
+  if (source === 'test') {
+    if (filmPlaying) filmTime += dt;
+    filmAcc += dt;
+    if (filmPlaying && filmAcc > 1 / 30) { filmAcc = 0; drawFilm(filmTime); filmTex.needsUpdate = true; }
+  }
+  if (renderer.xr.isPresenting) pollXR(now);
+  else camera.rotation.set(pitch, yaw, 0);
+  if (frameN++ % 6 === 0) sampleScreen();
+  glow.lerp(glowTarget, 0.08);
+  glowLum += (glowLumTarget - glowLum) * 0.08;
+  const peak = Math.max(glow.r, glow.g, glow.b, 1e-3);
+  screenLight.color.setRGB(glow.r / peak, glow.g / peak, glow.b / peak);
+  screenLight.intensity = 0.15 + 4.5 * glowLum;
+  spill.color.copy(screenLight.color);
+  spill.intensity = 0.04 + 1.1 * glowLum;
+  renderer.render(scene, camera);
+  if (source === 'embed' && !renderer.xr.isPresenting) renderCSS();
+});
+
+makeExitTex();
+setTheater('giant');
+setGuides(false);
+resize();
+resetView();
+checkVR();
+if (!inClaude) {
+  const q = new URLSearchParams(location.search), id = q.get('v');
+  const first = q.get('link') || (id && /^[\w-]{11}$/.test(id) ? `https://www.youtube.com/watch?v=${id}` : DEFAULT_LINK);
+  const L = parseLink(first);
+  if (L && L.kind === 'direct') loadDirect(L, { muted: true, quiet: true });
+  else if (L && L.kind !== 'bad') startEmbed(L, { muted: true, quiet: true });
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { makeExitTex(); buildHouse(); makeGridTex(); });
+</script>
